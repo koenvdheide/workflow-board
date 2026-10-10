@@ -39,6 +39,7 @@ claude --plugin-dir /path/to/findings-board
 - Pushes are delivered at most once. A push is lost if another mod withholds the tool result it rode on, or if the push hook fails after it moved the agent's read position; a `read` with `since`, `kind` or `tag` (or `read {id}`) still returns those entries.
 - An agent that calls a board tool before the mod has bound it to its run (not seen in testing), or a stalled agent's retry that gets a new agent id, is refused as not in a workflow run.
 - Boards end with the session and don't survive a restart of Claude Code.
+- In a session that loaded the mod partway through, the Workflow note didn't appear (seen once, in the desktop app on 2.1.296), so Claude wasn't told about the board. Load the mod when the session starts, as under Install.
 - A deny rule on `mcp__findings-board__read` also stops pushes. `ask` rules don't block the board tools, because they only touch the mod's own state.
 - Entry text can claim agreement in its own words ("confirmed by a2"), and an untagged headline can start with `[x]` and look like a tag group. Text that only looks like the reserved forms also gets through: another dot (such as U+2E31), or an evidence pointer that reads as `endorsed` through a look-alike letter or an invisible character. The board's own status is the one at the end of a read line (`· challenged`, `· endorsed`).
 
