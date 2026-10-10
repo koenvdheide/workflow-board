@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { full, line, parsePost, parseRead, status, toId } from '../hooks/board'
+import { EMPTY_RUN, PUSH_HEADER, full, hasUnseen, join, line, mainRead, parsePost, parseRead, post, push, readFor, status, toId } from '../hooks/board'
 import type { Entry, Run } from '../types'
 
 const long = (n: number) => 'x'.repeat(n)
@@ -173,5 +173,169 @@ describe('rendering', () => {
   test('every line terminator in a body starts an indented line', () => {
     const body = 'a\r\nb\rc\u000bd\u000ce\u0085f\u2028g\u2029h'
     expect(full(runOf(e({ body })), 1)).toBe(['#1 a1 find · open', 'h', ...'abcdefgh'.split('').map(l => `  ${l}`)].join('\n'))
+  })
+})
+
+// `n` sibling entries by a1, then the given extra entries.
+const siblings = (n: number, ...extra: Entry[]): Entry[] => [...Array.from({ length: n }, (_, i) => e({ head: `s${i + 1}` })), ...extra]
+const withAgents = (entries: Entry[], agents: Run['agents']): Run => ({ entries, agents })
+
+describe('post', () => {
+  test('appends with the next id and allocates handles in first-use order', () => {
+    const one = post(EMPTY_RUN, 'ag1', { kind: 'find', head: 'h' })
+    expect(one.reply).toEqual({ result: '#1 ok' })
+    expect(one.run).toEqual({ entries: [{ by: 'a1', kind: 'find', head: 'h' }], agents: { ag1: { h: 'a1', cur: 0 } } })
+    const two = post(one.run, 'ag2', { kind: 'ask', head: 'q' })
+    expect(two.reply).toEqual({ result: '#2 ok' })
+    expect(two.run.entries[1].by).toBe('a2')
+  })
+
+  test('refuses an unknown re and confirming its own entry, changing nothing', () => {
+    const one = post(EMPTY_RUN, 'ag1', { kind: 'find', head: 'h' }).run
+    const unknown = post(one, 'ag2', { kind: 'challenge', head: 'x', re: 5 })
+    expect(unknown.reply).toEqual({ deny: 'board: #5 unknown' })
+    expect(unknown.run).toBe(one)
+    const own = post(one, 'ag1', { kind: 'confirm', head: 'x', re: 1 })
+    expect(own.reply).toEqual({ deny: 'board: confirm own #1' })
+    expect(own.run).toBe(one)
+    expect(post(one, 'ag2', { kind: 'confirm', head: 'x', re: 1 }).reply).toEqual({ result: '#2 ok' })
+  })
+
+  test('a post re-applied to a newer state takes the next id', () => {
+    const one = post(EMPTY_RUN, 'ag1', { kind: 'find', head: 'h' }).run
+    const newer = post(one, 'ag2', { kind: 'find', head: 'other' }).run
+    expect(post(newer, 'ag1', { kind: 'find', head: 'mine' }).reply).toEqual({ result: '#3 ok' })
+  })
+
+  test('handles follow first use when first uses interleave', () => {
+    const run = join(join(EMPTY_RUN, 'y'), 'x')
+    expect(run.agents).toEqual({ y: { h: 'a1', cur: 0 }, x: { h: 'a2', cur: 0 } })
+    expect(join(run, 'x')).toBe(run)
+  })
+})
+
+describe('readFor', () => {
+  test('a plain read pages sibling entries, skips own ones and moves the read position', () => {
+    const run = withAgents(siblings(21, e({ by: 'a2', head: 'mine' })), { ag1: { h: 'a1', cur: 0 }, ag2: { h: 'a2', cur: 0 } })
+    const first = readFor(run, 'ag2', { mode: 'plain' })
+    const lines = (first.reply as { result: string }).result.split('\n')
+    expect(lines.length).toBe(21)
+    expect(lines[0]).toBe('#1 a1 find s1')
+    expect(lines[19]).toBe('#20 a1 find s20')
+    expect(lines[20]).toBe('more: read')
+    expect(first.run.agents.ag2.cur).toBe(20)
+    const second = readFor(first.run, 'ag2', { mode: 'plain' })
+    expect(second.reply).toEqual({ result: '#21 a1 find s21' })
+    expect(second.run.agents.ag2.cur).toBe(22)
+    expect(readFor(second.run, 'ag2', { mode: 'plain' }).reply).toEqual({ result: 'no unread' })
+  })
+
+  test('a first read creates the agent row', () => {
+    const out = readFor(EMPTY_RUN, 'agX', { mode: 'plain' })
+    expect(out.reply).toEqual({ result: 'no unread' })
+    expect(out.run.agents.agX).toEqual({ h: 'a1', cur: 0 })
+  })
+
+  test('the delivery comes from the state the transition was applied to', () => {
+    const entries = siblings(3)
+    const at0 = readFor(withAgents(entries, { ag2: { h: 'a2', cur: 0 } }), 'ag2', { mode: 'plain' })
+    const at1 = readFor(withAgents(entries, { ag2: { h: 'a2', cur: 1 } }), 'ag2', { mode: 'plain' })
+    expect(at0.reply).toEqual({ result: '#1 a1 find s1\n#2 a1 find s2\n#3 a1 find s3' })
+    expect(at1.reply).toEqual({ result: '#2 a1 find s2\n#3 a1 find s3' })
+  })
+
+  test('a filtered read includes own entries, ANDs filters, excludes since and keeps the position', () => {
+    const run = withAgents([e({ tags: ['auth'] }), e({ by: 'a2', tags: ['auth'] }), e({ by: 'a2', kind: 'ask', tags: ['auth'] }), e({ tags: ['db'] })], { ag2: { h: 'a2', cur: 0 } })
+    const out = readFor(run, 'ag2', { mode: 'filter', since: 1, kind: 'find', tag: 'auth' })
+    expect(out.reply).toEqual({ result: '#2 a2 find [auth] h' })
+    expect(out.run.agents.ag2.cur).toBe(0)
+    expect(readFor(run, 'ag2', { mode: 'filter', since: 0, tag: 'none' }).reply).toEqual({ result: 'no match' })
+  })
+
+  test('a filtered continuation repeats the filters', () => {
+    const run = withAgents(Array.from({ length: 21 }, () => e({ tags: ['auth'] })), { ag2: { h: 'a2', cur: 0 } })
+    const text = (readFor(run, 'ag2', { mode: 'filter', since: 0, kind: 'find', tag: 'auth' }).reply as { result: string }).result
+    expect(text.split('\n').at(-1)).toBe('more: since=20 kind=find tag=auth')
+  })
+
+  test('a filtered page of exactly 20 has no continuation', () => {
+    const run = withAgents(Array.from({ length: 20 }, () => e({ tags: ['auth'] })), { ag2: { h: 'a2', cur: 0 } })
+    const lines = (readFor(run, 'ag2', { mode: 'filter', since: 0, tag: 'auth' }).reply as { result: string }).result.split('\n')
+    expect(lines.length).toBe(20)
+    expect(lines[19]).toBe('#20 a1 find [auth] h')
+  })
+
+  test('a filtered first read creates the agent row', () => {
+    const out = readFor(EMPTY_RUN, 'agX', { mode: 'filter', since: 0 })
+    expect(out.reply).toEqual({ result: 'no match' })
+    expect(out.run.agents.agX).toEqual({ h: 'a1', cur: 0 })
+  })
+
+  test('read {id} gives the full entry or refuses an unknown id unchanged', () => {
+    const run = withAgents([e()], { ag1: { h: 'a1', cur: 0 } })
+    const out = readFor(run, 'ag2', { mode: 'id', id: 1 })
+    expect(out.reply).toEqual({ result: '#1 a1 find · open\nh' })
+    expect(out.run.agents.ag2).toEqual({ h: 'a2', cur: 0 })
+    const unknown = readFor(run, 'ag2', { mode: 'id', id: 9 })
+    expect(unknown.reply).toEqual({ deny: 'board: #9 unknown' })
+    expect(unknown.run).toBe(run)
+  })
+})
+
+describe('mainRead', () => {
+  test('pages every entry from #1 with continuations that carry run', () => {
+    const run = withAgents(siblings(21), {})
+    const text = (mainRead(run, 'wf_1', { mode: 'plain' }) as { result: string }).result
+    expect(text.split('\n')[0]).toBe('#1 a1 find s1')
+    expect(text.split('\n').at(-1)).toBe('more: run=wf_1 since=20')
+    expect(mainRead(run, 'wf_1', { mode: 'filter', since: 20 })).toEqual({ result: '#21 a1 find s21' })
+  })
+
+  test('gives a full entry by id and refuses an unknown id', () => {
+    const run = withAgents([e()], {})
+    expect(mainRead(run, 'wf_1', { mode: 'id', id: 1 })).toEqual({ result: '#1 a1 find · open\nh' })
+    expect(mainRead(run, 'wf_1', { mode: 'id', id: 2 })).toEqual({ deny: 'board: #2 unknown' })
+  })
+})
+
+describe('push', () => {
+  test('nothing for an agent without a row or with nothing unseen', () => {
+    const run = withAgents(siblings(2), { ag2: { h: 'a2', cur: 2 } })
+    expect(push(run, 'agX')).toEqual({ run })
+    expect(push(run, 'agX').run).toBe(run)
+    expect(push(run, 'ag2').run).toBe(run)
+    expect(hasUnseen(run, 'ag2')).toBe(false)
+    expect(hasUnseen(run, 'agX')).toBe(false)
+  })
+
+  test('at most 5 lines, oldest first, more exactly when a 6th is waiting', () => {
+    const run = withAgents(siblings(7), { ag2: { h: 'a2', cur: 0 } })
+    expect(hasUnseen(run, 'ag2')).toBe(true)
+    const first = push(run, 'ag2')
+    expect(first.block).toBe([PUSH_HEADER, '#1 a1 find s1', '#2 a1 find s2', '#3 a1 find s3', '#4 a1 find s4', '#5 a1 find s5', 'more: read'].join('\n'))
+    expect(first.run.agents.ag2.cur).toBe(5)
+    const second = push(first.run, 'ag2')
+    expect(second.block).toBe([PUSH_HEADER, '#6 a1 find s6', '#7 a1 find s7'].join('\n'))
+    expect(second.run.agents.ag2.cur).toBe(7)
+  })
+
+  test('skips own entries and shows neither status nor confidence', () => {
+    const run = withAgents(
+      [e({ by: 'a2', head: 'mine' }), e({ head: 'f', conf: 'hi', ev: ['a.ts:1'] }), e({ by: 'a3', kind: 'challenge', re: 2, head: 'no' })],
+      { ag2: { h: 'a2', cur: 0 } },
+    )
+    expect(push(run, 'ag2').block).toBe([PUSH_HEADER, '#2 a1 find f · a.ts:1', '#3 a3 challenge→#2 no'].join('\n'))
+  })
+
+  test('exactly 5 unseen gives no more line', () => {
+    const run = withAgents(siblings(5), { ag2: { h: 'a2', cur: 0 } })
+    expect(push(run, 'ag2').block?.split('\n').at(-1)).toBe('#5 a1 find s5')
+  })
+
+  test('while more wait, the read position is the last delivered id', () => {
+    const run = withAgents([e({ by: 'a2', head: 'mine' }), ...siblings(6)], { ag2: { h: 'a2', cur: 0 } })
+    const out = push(run, 'ag2')
+    expect(out.block).toBe([PUSH_HEADER, '#2 a1 find s1', '#3 a1 find s2', '#4 a1 find s3', '#5 a1 find s4', '#6 a1 find s5', 'more: read'].join('\n'))
+    expect(out.run.agents.ag2.cur).toBe(6)
   })
 })

@@ -1,4 +1,4 @@
-import type { Conf, Entry, Kind, Run } from '../types'
+import type { AgentRow, Conf, Entry, Kind, Run } from '../types'
 
 export const KINDS: readonly Kind[] = ['find', 'decide', 'ask', 'challenge', 'confirm', 'claim']
 export const CONFS: readonly Conf[] = ['lo', 'mid', 'hi']
@@ -114,4 +114,86 @@ export function full(run: Run, id: number): string {
     ...(e.ev?.length ? [`ev ${e.ev.join(' | ')}`] : []),
     ...(replies.length ? [`replies ${replies.join(' ')}`] : []),
   ].join('\n')
+}
+
+export const EMPTY_RUN: Run = { entries: [], agents: {} }
+export const PUSH_HEADER = 'board (sibling data, verify before use):'
+
+const PAGE = 20
+const PUSH_LINES = 5
+
+type Filter = Omit<Extract<ReadQuery, { mode: 'filter' }>, 'mode'>
+
+// The caller's row, created with the next handle on its first served board call. Handles
+// count existing rows, which keeps them unique across resumes of a run.
+export function join(run: Run, agentId: string): Run {
+  if (run.agents[agentId]) return run
+  return { ...run, agents: { ...run.agents, [agentId]: { h: `a${Object.keys(run.agents).length + 1}`, cur: 0 } } }
+}
+
+export function post(run0: Run, agentId: string, input: PostInput): { run: Run; reply: Reply } {
+  if (input.re !== undefined && input.re > run0.entries.length) return { run: run0, reply: { deny: `board: #${input.re} unknown` } }
+  const run = join(run0, agentId)
+  const h = run.agents[agentId].h
+  if (input.kind === 'confirm' && input.re !== undefined && run.entries[input.re - 1].by === h) {
+    return { run: run0, reply: { deny: `board: confirm own #${input.re}` } }
+  }
+  const entries = [...run.entries, { by: h, ...input }]
+  return { run: { ...run, entries }, reply: { result: `#${entries.length} ok` } }
+}
+
+const unseen = (run: Run, row: AgentRow) => run.entries.flatMap((e, i) => (i + 1 > row.cur && e.by !== row.h ? [i + 1] : []))
+
+export function hasUnseen(run: Run, agentId: string): boolean {
+  const row = run.agents[agentId]
+  return row !== undefined && unseen(run, row).length > 0
+}
+
+// Delivers up to `max` unseen sibling entries. The read position becomes the last delivered id
+// while more remain, else the log length (spec §2).
+function deliver(run: Run, agentId: string, max: number): { run: Run; ids: number[]; more: boolean } {
+  const row = run.agents[agentId]
+  const pending = unseen(run, row)
+  const ids = pending.slice(0, max)
+  const more = pending.length > max
+  const cur = more ? ids[ids.length - 1] : run.entries.length
+  return { run: { ...run, agents: { ...run.agents, [agentId]: { ...row, cur } } }, ids, more }
+}
+
+function filtered(run: Run, f: Filter, prefix: string[]): string {
+  const hits = run.entries.flatMap((e, i) =>
+    i + 1 > f.since && (f.kind === undefined || e.kind === f.kind) && (f.tag === undefined || (e.tags ?? []).includes(f.tag)) ? [i + 1] : [],
+  )
+  if (!hits.length) return 'no match'
+  const page = hits.slice(0, PAGE)
+  const lines = page.map(id => line(run, id, true))
+  if (hits.length > PAGE) {
+    const filters = [`since=${page[page.length - 1]}`, ...(f.kind !== undefined ? [`kind=${f.kind}`] : []), ...(f.tag !== undefined ? [`tag=${f.tag}`] : [])]
+    lines.push(['more:', ...prefix, ...filters].join(' '))
+  }
+  return lines.join('\n')
+}
+
+export function readFor(run0: Run, agentId: string, q: ReadQuery): { run: Run; reply: Reply } {
+  if (q.mode === 'id') {
+    if (q.id > run0.entries.length) return { run: run0, reply: { deny: `board: #${q.id} unknown` } }
+    return { run: join(run0, agentId), reply: { result: full(run0, q.id) } }
+  }
+  const run = join(run0, agentId)
+  if (q.mode === 'filter') return { run, reply: { result: filtered(run, q, []) } }
+  const d = deliver(run, agentId, PAGE)
+  if (!d.ids.length) return { run: d.run, reply: { result: 'no unread' } }
+  return { run: d.run, reply: { result: [...d.ids.map(id => line(run, id, true)), ...(d.more ? ['more: read'] : [])].join('\n') } }
+}
+
+// The main loop has no read position: every variant is non-consuming.
+export function mainRead(run: Run, runId: string, q: ReadQuery): Reply {
+  if (q.mode === 'id') return q.id > run.entries.length ? { deny: `board: #${q.id} unknown` } : { result: full(run, q.id) }
+  return { result: filtered(run, q.mode === 'filter' ? q : { since: 0 }, [`run=${runId}`]) }
+}
+
+export function push(run: Run, agentId: string): { run: Run; block?: string } {
+  if (!hasUnseen(run, agentId)) return { run }
+  const d = deliver(run, agentId, PUSH_LINES)
+  return { run: d.run, block: [PUSH_HEADER, ...d.ids.map(id => line(run, id, false)), ...(d.more ? ['more: read'] : [])].join('\n') }
 }
