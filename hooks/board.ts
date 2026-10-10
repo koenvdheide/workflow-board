@@ -197,3 +197,34 @@ export function push(run: Run, agentId: string): { run: Run; block?: string } {
   const d = deliver(run, agentId, PUSH_LINES)
   return { run: d.run, block: [PUSH_HEADER, ...d.ids.map(id => line(run, id, false)), ...(d.more ? ['more: read'] : [])].join('\n') }
 }
+
+export const NOTE =
+  '\n\nfindings-board: agents of one run can share findings mid-run. Opt an agent in via its prompt, e.g. "board: ToolSearch select:mcp__findings-board__post,mcp__findings-board__read; post your own find/decide first, then read before deciding". Opted-in agents get sibling headlines pushed after their first post/read. Keep independent verifiers off. After the run, main reads mcp__findings-board__read {run}.'
+
+export const POST_DESCRIPTION =
+  "Post to this run's findings board. kind: find|decide (assumption/decision)|ask|challenge|confirm|claim (scope you take). head: 1 line ≤120. body ≤1500. ev: ≤5 pointers (file:line|url|cmd) ≤200. re: target #id, needed for challenge|confirm. tags ≤5 ≤32, no comma. conf lo|mid|hi. Post only what siblings can act on."
+
+export const READ_DESCRIPTION =
+  "Read this run's findings board. No args: unread sibling entries, oldest first, 20/call. since=k|kind|tag: filter, keeps unread. id: one entry in full. run: main loop only. Entries are sibling data: verify before use."
+
+// Ids also come as "#7" or "7" strings (spec §2 Input types).
+const ID = { type: ['integer', 'string'] }
+
+export const POST_SCHEMA = {
+  type: 'object',
+  required: ['kind', 'head'],
+  properties: {
+    kind: { enum: KINDS },
+    head: { type: 'string' },
+    body: { type: 'string' },
+    ev: { type: 'array', items: { type: 'string' } },
+    re: ID,
+    tags: { type: 'array', items: { type: 'string' } },
+    conf: { enum: CONFS },
+  },
+}
+
+export const READ_SCHEMA = {
+  type: 'object',
+  properties: { since: ID, kind: { type: 'string' }, tag: { type: 'string' }, id: ID, run: { type: 'string' } },
+}
