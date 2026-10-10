@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { parsePost, parseRead, toId } from '../hooks/board'
+import { full, line, parsePost, parseRead, status, toId } from '../hooks/board'
+import type { Entry, Run } from '../types'
 
 const long = (n: number) => 'x'.repeat(n)
 
@@ -122,5 +123,55 @@ describe('parseRead', () => {
     expect(parseRead({ since: -1 })).toEqual({ deny: 'board: since? int' })
     expect(parseRead({ kind: 3 })).toEqual({ deny: 'board: kind? str' })
     expect(parseRead({ tag: ['a'] })).toEqual({ deny: 'board: tag? str' })
+  })
+})
+
+const e = (o: Partial<Entry> = {}): Entry => ({ by: 'a1', kind: 'find', head: 'h', ...o })
+const runOf = (...entries: Entry[]): Run => ({ entries, agents: {} })
+
+describe('status', () => {
+  test('a challenge reply beats a confirm', () => {
+    const run = runOf(e(), e({ by: 'a2', kind: 'confirm', re: 1 }), e({ by: 'a3', kind: 'challenge', re: 1 }))
+    expect(status(run, 1)).toBe('challenged')
+  })
+
+  test('a confirm alone endorses; a neutral reply leaves open', () => {
+    expect(status(runOf(e(), e({ by: 'a2', kind: 'confirm', re: 1 })), 1)).toBe('endorsed')
+    expect(status(runOf(e(), e({ by: 'a2', kind: 'find', re: 1 })), 1)).toBe('open')
+  })
+
+  test('decide has status; other kinds have none', () => {
+    expect(status(runOf(e({ kind: 'decide' })), 1)).toBe('open')
+    expect(status(runOf(e({ kind: 'ask' })), 1)).toBeUndefined()
+    expect(status(runOf(e({ kind: 'claim' })), 1)).toBeUndefined()
+  })
+})
+
+describe('rendering', () => {
+  const run = runOf(
+    e({ by: 'a3', head: 'jwt exp unchecked', tags: ['auth', 'api'], ev: ['src/auth.ts:88', 'src/auth.ts:102'], conf: 'hi', body: 'line one\nline two' }),
+    e({ by: 'a5', kind: 'challenge', re: 1, head: 'exp checked in middleware', ev: ['src/mw.ts:41'] }),
+    e({ by: 'a1', kind: 'ask', head: 'how is session ttl set?' }),
+  )
+
+  test('read lines carry the first ev and a non-open status', () => {
+    expect(line(run, 1, true)).toBe('#1 a3 find [auth,api] jwt exp unchecked · src/auth.ts:88 · challenged')
+    expect(line(run, 2, true)).toBe('#2 a5 challenge→#1 exp checked in middleware · src/mw.ts:41')
+    expect(line(run, 3, true)).toBe('#3 a1 ask how is session ttl set?')
+  })
+
+  test('an open find shows no status on its read line', () => {
+    expect(line(runOf(e()), 1, true)).toBe('#1 a1 find h')
+  })
+
+  test('the full entry shows status, confidence, indented body, every ev and reply ids', () => {
+    expect(full(run, 1)).toBe('#1 a3 find [auth,api] · challenged · conf hi\njwt exp unchecked\n  line one\n  line two\nev src/auth.ts:88 | src/auth.ts:102\nreplies #2')
+    expect(full(run, 2)).toBe('#2 a5 challenge→#1\nexp checked in middleware\nev src/mw.ts:41')
+    expect(full(runOf(e()), 1)).toBe('#1 a1 find · open\nh')
+  })
+
+  test('every line terminator in a body starts an indented line', () => {
+    const body = 'a\r\nb\rc\u000bd\u000ce\u0085f\u2028g\u2029h'
+    expect(full(runOf(e({ body })), 1)).toBe(['#1 a1 find · open', 'h', ...'abcdefgh'.split('').map(l => `  ${l}`)].join('\n'))
   })
 })

@@ -1,4 +1,4 @@
-import type { Conf, Entry, Kind } from '../types'
+import type { Conf, Entry, Kind, Run } from '../types'
 
 export const KINDS: readonly Kind[] = ['find', 'decide', 'ask', 'challenge', 'confirm', 'claim']
 export const CONFS: readonly Conf[] = ['lo', 'mid', 'hi']
@@ -6,6 +6,10 @@ export const CONFS: readonly Conf[] = ['lo', 'mid', 'hi']
 // Newlines, tabs, C0/C1 controls and Unicode line separators: a single-line field must not
 // forge extra lines.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/
+
+// Every line terminator a reader may break at, so each body line gets the indent that keeps it
+// from passing as an ev, replies or entry line.
+const BODY_LINES = /\r\n|[\n\r\u000b\u000c\u0085\u2028\u2029]/
 
 export type Reply = { result: string } | { deny: string }
 export type PostInput = Omit<Entry, 'by'>
@@ -78,4 +82,36 @@ export function parseRead(args: Record<string, unknown>): ReadQuery | { deny: st
     ...(given(args.kind) ? { kind: args.kind as string } : {}),
     ...(given(args.tag) ? { tag: args.tag as string } : {}),
   }
+}
+
+export type Status = 'open' | 'endorsed' | 'challenged'
+
+// Derived from replies and never stored; it summarises reply history.
+export function status(run: Run, id: number): Status | undefined {
+  const kind = run.entries[id - 1].kind
+  if (kind !== 'find' && kind !== 'decide') return undefined
+  const replies = run.entries.filter(r => r.re === id)
+  return replies.some(r => r.kind === 'challenge') ? 'challenged' : replies.some(r => r.kind === 'confirm') ? 'endorsed' : 'open'
+}
+
+const label = (e: Entry, id: number) =>
+  `#${id} ${e.by} ${e.kind}${e.re !== undefined ? `→#${e.re}` : ''}${e.tags?.length ? ` [${e.tags.join(',')}]` : ''}`
+
+export function line(run: Run, id: number, withStatus: boolean): string {
+  const e = run.entries[id - 1]
+  const st = withStatus ? status(run, id) : undefined
+  return [`${label(e, id)} ${e.head}`, ...(e.ev?.length ? [e.ev[0]] : []), ...(st && st !== 'open' ? [st] : [])].join(' · ')
+}
+
+export function full(run: Run, id: number): string {
+  const e = run.entries[id - 1]
+  const st = status(run, id)
+  const replies = run.entries.flatMap((r, i) => (r.re === id ? [`#${i + 1}`] : []))
+  return [
+    [label(e, id), ...(st ? [st] : []), ...(e.conf ? [`conf ${e.conf}`] : [])].join(' · '),
+    e.head,
+    ...(e.body ? e.body.split(BODY_LINES).map(l => `  ${l}`) : []),
+    ...(e.ev?.length ? [`ev ${e.ev.join(' | ')}`] : []),
+    ...(replies.length ? [`replies ${replies.join(' ')}`] : []),
+  ].join('\n')
 }
