@@ -29,7 +29,7 @@ In reads, a `find` or `decide` entry with a `challenge` reply shows as `challeng
 
 ## Install
 
-Needs Claude Code with mods on (developed against 2.1.293). Not listed in a marketplace yet; load it for one session with:
+Needs Claude Code with mods on (developed against 2.1.293 to 2.1.296). Not listed in a marketplace yet; load it for one session with:
 
 ```sh
 claude --plugin-dir /path/to/findings-board

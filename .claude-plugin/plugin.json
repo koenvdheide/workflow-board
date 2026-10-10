@@ -1,6 +1,6 @@
 {
   "name": "findings-board",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A findings board for the agents of one Claude Code Workflow run: post and read tools, and compact pushes of new sibling entries on their tool results.",
   "author": {
     "name": "Koen van der Heide",
