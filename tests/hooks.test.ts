@@ -39,6 +39,7 @@ async function boot($: any, on: On): Promise<World> {
   // The spawned agent's id is its prompt, so a test names its agents.
   on('agent.spawn', ($: any, e: any) => (e.prompt.startsWith('deny') ? { deny: 'no' } : { model: 'm', agentId: e.prompt }))
   on('tool.call', { tool: 'mcp__other__op' }, () => ({ result: 'ran' }))
+  on('tool.call', { tool: 'mcp__other__ctx' }, () => ({ result: 'ran', context: ['x'] }))
   on('tool.call', { tool: 'mcp__other__denied' }, () => ({ deny: 'no' }))
   await $.session.start({ cwd: 'C:/repo', surface: null, isInteractive: true })
   return w
@@ -173,5 +174,91 @@ describe('binding and authorization', () => {
     w.race = { entries: [{ by: 'a1', kind: 'find', head: 'rival' }], agents: { rival: { h: 'a1', cur: 0 } } }
     expect((await call($, POST, 'ag1', { kind: 'find', head: 'h' })).result).toBe('#2 ok')
     expect((await call($, READ, undefined, { run: 'wf_race1' })).result).toBe('#1 a1 find rival\n#2 a2 find h')
+  })
+})
+
+const OTHER = 'mcp__other__op'
+const DENIED = 'mcp__other__denied'
+const pushed = (...lines: string[]) => [['board (sibling data, verify before use):', ...lines].join('\n')]
+const contextOf = (r: any) => r.context ?? []
+
+// ag2 subscribes first (handle a1); ag1 then posts entry #1 (handle a2).
+async function twoAgents($: any, on: On, runId: string): Promise<World> {
+  const w = await boot($, on)
+  await spawn($, 'ag1', runId)
+  await spawn($, 'ag2', runId)
+  expect((await call($, READ, 'ag2')).result).toBe('no unread')
+  expect((await call($, POST, 'ag1', { kind: 'find', head: 'h1' })).result).toBe('#1 ok')
+  return w
+}
+
+describe('push', () => {
+  test('a sibling entry arrives once on the next non-board tool result', async ($, on) => {
+    await twoAgents($, on, 'wf_p1')
+    const r = await call($, OTHER, 'ag2')
+    expect(r.result).toBe('ran')
+    expect(contextOf(r)).toEqual(pushed('#1 a2 find h1'))
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual([])
+  })
+
+  test('the poster gets no push of its own entry', async ($, on) => {
+    await twoAgents($, on, 'wf_p2')
+    expect(contextOf(await call($, OTHER, 'ag1'))).toEqual([])
+  })
+
+  test('a denied result carries no push and the entry waits for the next one', async ($, on) => {
+    await twoAgents($, on, 'wf_p3')
+    const d = await call($, DENIED, 'ag2')
+    expect(d.deny).toBe('no')
+    expect(contextOf(d)).toEqual([])
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+  })
+
+  test('an agent that never used the board and the main loop get nothing', async ($, on) => {
+    await twoAgents($, on, 'wf_p4')
+    await spawn($, 'ag3', 'wf_p4')
+    expect(contextOf(await call($, OTHER, 'ag3'))).toEqual([])
+    expect(contextOf(await call($, OTHER, undefined))).toEqual([])
+  })
+
+  test('a read deny suppresses the push and keeps the position; a post deny does not', async ($, on) => {
+    const w = await twoAgents($, on, 'wf_p5')
+    w.decisions = { [READ]: 'deny' }
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual([])
+    expect((await call($, POST, 'ag1', { kind: 'find', head: 'h2' })).result).toBe('#2 ok')
+    w.decisions = { [POST]: 'deny' }
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1', '#2 a2 find h2'))
+  })
+
+  test('board tool results carry no push', async ($, on) => {
+    await twoAgents($, on, 'wf_p6')
+    const r = await call($, POST, 'ag2', { kind: 'find', head: 'mine' })
+    expect(r.result).toBe('#2 ok')
+    expect(contextOf(r)).toEqual([])
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+  })
+
+  test('the push block follows context already on the result', async ($, on) => {
+    await twoAgents($, on, 'wf_p7')
+    expect(contextOf(await call($, 'mcp__other__ctx', 'ag2'))).toEqual(['x', ...pushed('#1 a2 find h1')])
+  })
+
+  test('a failed push step keeps the tool result and the entry waits', async ($, on) => {
+    const w = await twoAgents($, on, 'wf_p8')
+    w.failSet = true
+    const r = await call($, OTHER, 'ag2')
+    expect(r.result).toBe('ran')
+    expect(contextOf(r)).toEqual([])
+    w.failSet = false
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+  })
+
+  test('a push retried after a competing write delivers what landed', async ($, on) => {
+    const w = await twoAgents($, on, 'wf_p9')
+    w.race = {
+      entries: [{ by: 'a2', kind: 'find', head: 'h1' }, { by: 'a2', kind: 'find', head: 'h2' }],
+      agents: { ag2: { h: 'a1', cur: 0 }, ag1: { h: 'a2', cur: 0 } },
+    }
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1', '#2 a2 find h2'))
   })
 })

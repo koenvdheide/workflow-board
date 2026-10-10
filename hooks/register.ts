@@ -1,7 +1,7 @@
 import { read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { EMPTY_RUN, NOTE, POST_DESCRIPTION, POST_SCHEMA, READ_DESCRIPTION, READ_SCHEMA, mainRead, parsePost, parseRead, post, readFor } from './board'
+import { EMPTY_RUN, NOTE, POST_DESCRIPTION, POST_SCHEMA, READ_DESCRIPTION, READ_SCHEMA, hasUnseen, mainRead, parsePost, parseRead, post, push, readFor } from './board'
 import type { Reply } from './board'
 import type { Run } from '../types'
 
@@ -108,5 +108,26 @@ export const register: Register = on => {
     } catch (err) {
       return refusal(err)
     }
+  })
+
+  on('tool.call', async ($, e, next) => {
+    const agentId = e.agentId
+    if (!agentId) return next(e)
+    const ran = await next(e)
+    // A deny may not carry context; the entries wait for a served result.
+    if (ran.deny !== undefined) return ran
+    const runId = await boundRun($, agentId)
+    if (!runId) return ran
+    const run = await read($, { ...RUN, id: runId })
+    if (!run || !hasUnseen(run, agentId)) return ran
+    // A push is a read: a deny on the read tool suppresses it (spec §7).
+    if (await denied($, READ, {})) return ran
+    let block: string | undefined
+    await update($, { ...RUN, id: runId }, current => {
+      const out = push(current ?? EMPTY_RUN, agentId)
+      block = out.block
+      return out.run
+    })
+    return block ? { ...ran, context: [...(ran.context ?? []), block] } : ran
   })
 }
