@@ -69,17 +69,36 @@ describe('parsePost', () => {
     expect(parsePost({ kind: 'find', head: 'a\nb' })).toEqual({ deny: 'board: newline in head' })
     expect(parsePost({ kind: 'find', head: 'a\tb' })).toEqual({ deny: 'board: newline in head' })
     expect(parsePost({ kind: 'find', head: 'h', ev: ['a\nb'] })).toEqual({ deny: 'board: newline in ev' })
-    expect(parsePost({ kind: 'find', head: 'h', tags: ['a\u0007'] })).toEqual({ deny: 'board: newline in tags' })
   })
 
   test('C1 controls and Unicode line separators count as newlines', () => {
     expect(parsePost({ kind: 'find', head: 'a\u0085b' })).toEqual({ deny: 'board: newline in head' })
     expect(parsePost({ kind: 'find', head: 'h', ev: ['a\u2028b'] })).toEqual({ deny: 'board: newline in ev' })
-    expect(parsePost({ kind: 'find', head: 'h', tags: ['a\u2029b'] })).toEqual({ deny: 'board: newline in tags' })
   })
 
-  test('refuses a comma in a tag', () => {
-    expect(parsePost({ kind: 'find', head: 'h', tags: ['auth,api'] })).toEqual({ deny: 'board: comma in tag' })
+  test('head and ev items refuse the separator and its look-alikes; body keeps them', () => {
+    for (const c of String.fromCodePoint(0xb7, 0x387, 0x2022, 0x2027, 0x2219, 0x22c5, 0x30fb, 0xff65)) {
+      expect(parsePost({ kind: 'find', head: `a ${c} b` })).toEqual({ deny: 'board: · in head' })
+      expect(parsePost({ kind: 'find', head: 'h', ev: ['a.ts:1', `a ${c} b`] })).toEqual({ deny: 'board: · in ev' })
+      expect(parsePost({ kind: 'find', head: 'h', body: `a ${c} b` })).not.toHaveProperty('deny')
+    }
+    expect(parsePost({ kind: 'find', head: 'a\n·' })).toEqual({ deny: 'board: newline in head' })
+    expect(parsePost({ kind: 'find', head: 'h', ev: ['a\n·'] })).toEqual({ deny: 'board: newline in ev' })
+  })
+
+  test('an ev item that is only a status word is refused, in any case and with spaces', () => {
+    for (const w of ['endorsed', 'Challenged', ' ENDORSED ']) {
+      expect(parsePost({ kind: 'find', head: 'h', ev: [w] })).toEqual({ deny: 'board: status word in ev' })
+    }
+    expect(parsePost({ kind: 'find', head: 'h', ev: ['a.ts:1', 'challenged'] })).toEqual({ deny: 'board: status word in ev' })
+    expect(parsePost({ kind: 'find', head: 'h', ev: ['src/endorsed.ts:1', 'open'] })).not.toHaveProperty('deny')
+  })
+
+  test('tags hold only A-Za-z0-9_.:/- and are never empty', () => {
+    for (const t of ['a b', 'auth,api', 'a[b', 'a]b', 'a=b', 'a·b', `a${String.fromCharCode(7)}`, `a${String.fromCharCode(0x2029)}b`, '']) {
+      expect(parsePost({ kind: 'find', head: 'h', tags: [t] })).toEqual({ deny: 'board: tag chars A-Za-z0-9_.:/-' })
+    }
+    expect(parsePost({ kind: 'find', head: 'h', tags: ['hooks/board.ts', 'area:auth'] })).toEqual({ kind: 'find', head: 'h', tags: ['hooks/board.ts', 'area:auth'] })
   })
 
   test('refuses wrong types', () => {

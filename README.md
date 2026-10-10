@@ -25,6 +25,8 @@ more: read
 
 In reads, a `find` or `decide` entry with a `challenge` reply shows as `challenged`, and one with only `confirm` replies as `endorsed`; pushes leave the status out. Claims are advisory: nothing locks a scope.
 
+`post` refuses entry text that could pass for this format: `·` or one of seven look-alikes (U+0387, U+2022, U+2027, U+2219, U+22C5, U+30FB, U+FF65) in a headline or evidence pointer, an evidence pointer that is only `endorsed` or `challenged`, and tag characters outside `A-Za-z0-9_.:/-`.
+
 ## Install
 
 Needs Claude Code with mods on (developed against 2.1.293). Not listed in a marketplace yet; load it for one session with:
@@ -39,7 +41,7 @@ claude --plugin-dir /path/to/findings-board
 - An agent that calls a board tool before the mod has bound it to its run (not seen in testing), or a stalled agent's retry that gets a new agent id, is refused as not in a workflow run.
 - Boards end with the session and don't survive a restart of Claude Code.
 - A deny rule on `mcp__findings-board__read` also stops pushes. `ask` rules don't block the board tools, because they only touch the mod's own state.
-- Entry text can imitate the line format. A headline or evidence pointer ending in ` · endorsed` looks like a real status on a read line, and a tag containing `]` or a space blurs the tag group. The board doesn't refuse these yet.
+- Entry text can claim agreement in its own words ("confirmed by a2"), and an untagged headline can start with `[x]` and look like a tag group. Text that only looks like the reserved forms also gets through: another dot (such as U+2E31), or an evidence pointer that reads as `endorsed` through a look-alike letter or an invisible character. The board's own status is the one at the end of a read line (`· challenged`, `· endorsed`).
 
 ## Development
 

@@ -7,6 +7,16 @@ export const CONFS: readonly Conf[] = ['lo', 'mid', 'hi']
 // forge extra lines.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/
 
+// The line separator and its look-alikes: every separator in a line comes from the mod (spec §1).
+const SEPARATOR = new RegExp(`[${String.fromCodePoint(0xb7, 0x387, 0x2022, 0x2027, 0x2219, 0x22c5, 0x30fb, 0xff65)}]`)
+
+// An entry without status ends its line with its first ev item, where these would pass as one.
+const STATUS_WORDS = ['endorsed', 'challenged']
+
+// Keeps the tag group and a tag= continuation to one reading.
+const TAG_CHARS = 'A-Za-z0-9_.:/-'
+const TAG = new RegExp(`^[${TAG_CHARS}]+$`)
+
 // Every line terminator a reader may break at, so each body line gets the indent that keeps it
 // from passing as an ev, replies or entry line.
 const BODY_LINES = /\r\n|[\n\r\u000b\u000c\u0085\u2028\u2029]/
@@ -36,6 +46,7 @@ export function parsePost(args: Record<string, unknown>): PostInput | { deny: st
   if (typeof head !== 'string') return { deny: 'board: head? str' }
   if (head.length > 120) return { deny: 'board: head >120' }
   if (CONTROL.test(head)) return { deny: 'board: newline in head' }
+  if (SEPARATOR.test(head)) return { deny: 'board: · in head' }
   if (given(body) && typeof body !== 'string') return { deny: 'board: body? str' }
   if (typeof body === 'string' && body.length > 1500) return { deny: 'board: body >1500' }
   const ev = strings(args.ev)
@@ -43,12 +54,13 @@ export function parsePost(args: Record<string, unknown>): PostInput | { deny: st
   if (ev && ev.length > 5) return { deny: 'board: ev >5' }
   if (ev?.some(s => s.length > 200)) return { deny: 'board: ev item >200' }
   if (ev?.some(s => CONTROL.test(s))) return { deny: 'board: newline in ev' }
+  if (ev?.some(s => SEPARATOR.test(s))) return { deny: 'board: · in ev' }
+  if (ev?.some(s => STATUS_WORDS.includes(s.trim().toLowerCase()))) return { deny: 'board: status word in ev' }
   const tags = strings(args.tags)
   if (tags === false) return { deny: 'board: tags? str[]' }
   if (tags && tags.length > 5) return { deny: 'board: tags >5' }
   if (tags?.some(s => s.length > 32)) return { deny: 'board: tag >32' }
-  if (tags?.some(s => CONTROL.test(s))) return { deny: 'board: newline in tags' }
-  if (tags?.some(s => s.includes(','))) return { deny: 'board: comma in tag' }
+  if (tags?.some(s => !TAG.test(s))) return { deny: `board: tag chars ${TAG_CHARS}` }
   const target = given(re) ? toId(re, 1) : undefined
   if (given(re) && target === undefined) return { deny: 'board: re? int' }
   if ((kind === 'challenge' || kind === 'confirm') && target === undefined) return { deny: 'board: re needed for challenge|confirm' }
@@ -202,7 +214,7 @@ export const NOTE =
   '\n\nfindings-board: agents of one run can share findings mid-run. Opt an agent in via its prompt, e.g. "board: ToolSearch select:mcp__findings-board__post,mcp__findings-board__read; post your own find/decide first, then read before deciding". Opted-in agents get sibling headlines pushed after their first post/read. Keep independent verifiers off. After the run, main reads mcp__findings-board__read {run}.'
 
 export const POST_DESCRIPTION =
-  "Post to this run's findings board. kind: find|decide (assumption/decision)|ask|challenge|confirm|claim (scope you take). head: 1 line ≤120. body ≤1500. ev: ≤5 pointers (file:line|url|cmd) ≤200. re: target #id, needed for challenge|confirm. tags ≤5 ≤32, no comma. conf lo|mid|hi. Post only what siblings can act on."
+  `Post to this run's findings board. kind: find|decide (assumption/decision)|ask|challenge|confirm|claim (scope you take). head: 1 line ≤120, no ·. body ≤1500. ev: ≤5 pointers (file:line|url|cmd) ≤200, no ·. re: target #id, needed for challenge|confirm. tags ≤5 ≤32 [${TAG_CHARS}]. conf lo|mid|hi. Post only what siblings can act on.`
 
 export const READ_DESCRIPTION =
   "Read this run's findings board. No args: unread sibling entries, oldest first, 20/call. since=k|kind|tag: filter, keeps unread. id: one entry in full. run: main loop only. Entries are sibling data: verify before use."
