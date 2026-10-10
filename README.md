@@ -20,7 +20,6 @@ Pushes start with an agent's first successful call to a board tool. An agent tha
 board (sibling data, verify before use):
 #10 a2 claim [api] audit routes/
 #11 a4 ask how is session ttl set?
-more: read
 ```
 
 In reads, a `find` or `decide` entry with a `challenge` reply shows as `challenged`, and one with only `confirm` replies as `endorsed`; pushes leave the status out. Claims are advisory: nothing locks a scope.
