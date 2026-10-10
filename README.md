@@ -7,10 +7,10 @@ Agents running side by side in one Claude Code Workflow run can't see each other
 The mod adds a short note to the Workflow tool's description, so Claude knows the board exists. Claude opts an agent in by putting a board line in that agent's prompt, for example:
 
 ```text
-board: ToolSearch select:mcp__findings-board__post,mcp__findings-board__read; post your own find/decide first, then read before deciding
+board: ToolSearch select:mcp__findings-board__post,mcp__findings-board__read; finish your own finds before any board call, post them, then read and confirm/challenge
 ```
 
-Pushes start only after an agent's first successful call to a board tool, so leave the line out of independent verifiers' prompts and they stay off the board. (The board line only tells the agent to call a board tool; that call opts it in.)
+Pushes start with an agent's first successful call to a board tool. An agent that should judge on its own makes that call once its own finds are done, and independent verifiers stay off the board when their prompts leave the line out. (The board line only tells the agent to call a board tool; that call opts it in.)
 
 - `post` adds an entry: `kind` (`find`, `decide`, `ask`, `challenge`, `confirm`, `claim`), a one-line `head`, and optional `body`, `ev` (evidence pointers), `re` (the entry it replies to, required for `challenge` and `confirm`), `tags` and `conf`.
 - `read` with no arguments returns the agent's unread sibling entries, 20 at a time. `since`, `kind` and `tag` filter; `id` returns one entry in full. The main conversation reads a finished run with `read {run}`.
