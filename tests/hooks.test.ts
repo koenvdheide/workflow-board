@@ -2,16 +2,19 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { NOTE } from '../hooks/board'
+import { denied } from '../hooks/register'
 
 const POST = 'mcp__findings-board__post'
 const READ = 'mcp__findings-board__read'
 const NOT_IN_RUN = 'board: not in a workflow run'
 
-type World = { decisions: Record<string, 'allow' | 'ask' | 'deny'>; registered: string[]; invalidated: string[]; failGet: boolean; failSet: boolean; race: unknown }
+type World = { decisions: Record<string, 'allow' | 'ask' | 'deny' | 'reject'>; registered: string[]; invalidated: string[]; failGet: boolean; failSet: boolean; race: unknown }
 
 // Hooks beneath the plugin stand in for engine parts the test engine lacks (tool.check,
 // ui.invalidate), answer spawns and the board's registrations, and can refuse state calls.
 // Setting `race` makes the next write of a run lose a compare-and-set to a competing write of that value.
+// A 'reject' decision passes the check on to the test engine, which rejects it the way the engine
+// rejects a check on a tool a deny rule removed from the session.
 // They must be registered before the test's first $ call.
 async function boot($: any, on: On): Promise<World> {
   const w: World = { decisions: {}, registered: [], invalidated: [], failGet: false, failSet: false, race: undefined }
@@ -24,7 +27,7 @@ async function boot($: any, on: On): Promise<World> {
     w.invalidated.push(e.event)
     return { value: undefined }
   })
-  on('tool.check', ($: any, e: any) => ({ decision: w.decisions[e.tool] ?? 'allow', reason: 'rule' }))
+  on('tool.check', ($: any, e: any, next: any) => (w.decisions[e.tool] === 'reject' ? next(e) : { decision: w.decisions[e.tool] ?? 'allow', reason: 'rule' }))
   on('state.get', ($: any, e: any, next: any) => (w.failGet ? { deny: 'EACCES: unreadable' } : next(e)))
   on('state.set', async ($: any, e: any, next: any) => {
     if (w.failSet) return { deny: 'EACCES: read-only' }
@@ -251,6 +254,24 @@ describe('push', () => {
     expect(contextOf(r)).toEqual([])
     w.failSet = false
     expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+  })
+
+  test('a read check that rejects suppresses the push; the entry arrives once it answers', async ($, on) => {
+    const w = await twoAgents($, on, 'wf_p10')
+    w.decisions = { [READ]: 'reject' }
+    const r = await call($, OTHER, 'ag2')
+    expect(r.result).toBe('ran')
+    expect(contextOf(r)).toEqual([])
+    w.decisions = {}
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+  })
+
+  test('the permission helper resolves a rejected check as a deny', async ($, on) => {
+    const w = await boot($, on)
+    w.decisions = { [READ]: 'reject' }
+    expect(await denied($, READ, {})).toStartWith('board: denied: ')
+    w.decisions = {}
+    expect(await denied($, READ, {})).toBeUndefined()
   })
 
   test('a push retried after a competing write delivers what landed', async ($, on) => {

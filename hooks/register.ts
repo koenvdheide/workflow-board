@@ -26,9 +26,10 @@ class Refused {
 const refusal = (err: unknown): Reply => ({ deny: err instanceof Refused ? err.deny : `board: store refused: ${message(err)}` })
 
 // Serving a tool without next() skips the permission path, so an explicit deny is checked
-// here; ask is served because MCP tools default to ask (spec §7).
-async function denied($: EngineInterface, tool: string, input: unknown): Promise<string | undefined> {
-  const { decision, reason } = await $.tool.check({ tool, input })
+// here; ask is served because MCP tools default to ask. A check that rejects, as it does for a
+// tool a deny rule removed from the session, counts as a deny (spec §7).
+export async function denied($: EngineInterface, tool: string, input: unknown): Promise<string | undefined> {
+  const { decision, reason } = await $.tool.check({ tool, input }).catch((err: unknown) => ({ decision: 'deny' as const, reason: message(err) }))
   return decision === 'deny' ? `board: denied${reason ? `: ${reason}` : ''}` : undefined
 }
 
