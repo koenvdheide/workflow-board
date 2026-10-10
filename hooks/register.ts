@@ -11,6 +11,7 @@ import type { Run } from '../types'
 const POST = 'mcp__findings-board__post'
 const READ = 'mcp__findings-board__read'
 const NOT_IN_RUN = 'board: not in a workflow run'
+const UNPARSED = 'board: input? json'
 const BIND = { plugin: 'findings-board', key: 'bind' } as const
 const RUN = { plugin: 'findings-board', key: 'run' } as const
 
@@ -74,6 +75,8 @@ export const register: Register = on => {
     const { tool: _tool, tool_use_id: _toolUseId, agentId, ...args } = e
     const refused = await denied($, POST, args)
     if (refused) return { deny: refused }
+    // Input the engine could not parse as JSON arrives in place of the arguments.
+    if (args.__unparsedToolInput !== undefined) return { deny: UNPARSED }
     try {
       const runId = await boundRun($, agentId)
       if (!agentId || !runId) return { deny: NOT_IN_RUN }
@@ -89,6 +92,7 @@ export const register: Register = on => {
     const { tool: _tool, tool_use_id: _toolUseId, agentId, ...args } = e
     const refused = await denied($, READ, args)
     if (refused) return { deny: refused }
+    if (args.__unparsedToolInput !== undefined) return { deny: UNPARSED }
     try {
       if (!agentId) {
         const named = args.run

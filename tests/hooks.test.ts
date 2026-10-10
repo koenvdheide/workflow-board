@@ -262,3 +262,31 @@ describe('push', () => {
     expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1', '#2 a2 find h2'))
   })
 })
+
+describe('refused calls', () => {
+  test('a refused board call does not subscribe', async ($, on) => {
+    await twoAgents($, on, 'wf_sub')
+    await spawn($, 'ag3', 'wf_sub')
+    expect((await call($, POST, 'ag3', { kind: 'note', head: 'h' })).deny).toBe('board: kind? find|decide|ask|challenge|confirm|claim')
+    expect((await call($, READ, 'ag3', { id: 9 })).deny).toBe('board: #9 unknown')
+    expect(contextOf(await call($, OTHER, 'ag3'))).toEqual([])
+  })
+
+  test('input the engine could not parse is refused right after the permission check', async ($, on) => {
+    const w = await twoAgents($, on, 'wf_raw')
+    await spawn($, 'ag3', 'wf_raw')
+    const text = '{"since": 0, "tag": "auth"'
+    const raw = { __unparsedToolInput: { raw: text, len: text.length } }
+    for (const agentId of ['ag3', 'ag2', undefined]) {
+      expect((await call($, POST, agentId, raw)).deny).toBe('board: input? json')
+      expect((await call($, READ, agentId, raw)).deny).toBe('board: input? json')
+    }
+    w.decisions = { [READ]: 'deny' }
+    expect((await call($, READ, 'ag2', raw)).deny).toBe('board: denied: rule')
+    w.decisions = {}
+    expect(contextOf(await call($, OTHER, 'ag2'))).toEqual(pushed('#1 a2 find h1'))
+    await spawn($, 'ag4', 'wf_raw')
+    expect((await call($, POST, 'ag4', { kind: 'find', head: 'h2' })).result).toBe('#2 ok')
+    expect((await call($, READ, undefined, { run: 'wf_raw', id: 2 })).result).toStartWith('#2 a3 find')
+  })
+})
