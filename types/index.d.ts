@@ -11,6 +11,6 @@ export type Run = { entries: Entry[]; agents: Record<string, AgentRow> }
 
 declare module 'claude-code' {
   interface PluginState {
-    'findings-board': { run: StateFamily<Run>; bind: StateFamily<string> }
+    'workflow-board': { run: StateFamily<Run>; bind: StateFamily<string> }
   }
 }

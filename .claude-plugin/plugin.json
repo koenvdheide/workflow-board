@@ -1,13 +1,13 @@
 {
-  "name": "findings-board",
+  "name": "workflow-board",
   "version": "0.2.0",
   "description": "A findings board for the agents of one Claude Code Workflow run: post and read tools, and compact pushes of new sibling entries on their tool results.",
   "author": {
     "name": "Koen van der Heide",
     "url": "https://github.com/koenvdheide"
   },
-  "homepage": "https://github.com/koenvdheide/findings-board",
-  "repository": "https://github.com/koenvdheide/findings-board",
+  "homepage": "https://github.com/koenvdheide/workflow-board",
+  "repository": "https://github.com/koenvdheide/workflow-board",
   "license": "MIT",
   "types": "./types/index.d.ts",
   "keywords": ["workflow", "subagents", "blackboard", "findings", "mods"]

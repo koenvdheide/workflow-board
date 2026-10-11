@@ -8,12 +8,12 @@ import type { Run } from '../types'
 // Everything that calls the engine lives in this file: the mod loader follows `$` only into
 // functions declared here; a `$` call in an imported helper is invisible to it. board.ts holds the pure parts.
 
-const POST = 'mcp__findings-board__post'
-const READ = 'mcp__findings-board__read'
+const POST = 'mcp__workflow-board__post'
+const READ = 'mcp__workflow-board__read'
 const NOT_IN_RUN = 'board: not in a workflow run'
 const UNPARSED = 'board: input? json'
-const BIND = { plugin: 'findings-board', key: 'bind' } as const
-const RUN = { plugin: 'findings-board', key: 'run' } as const
+const BIND = { plugin: 'workflow-board', key: 'bind' } as const
+const RUN = { plugin: 'workflow-board', key: 'run' } as const
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 

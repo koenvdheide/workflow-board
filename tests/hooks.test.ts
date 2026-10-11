@@ -4,8 +4,8 @@ import type { On } from 'claude-code'
 import { NOTE } from '../hooks/board'
 import { denied } from '../hooks/register'
 
-const POST = 'mcp__findings-board__post'
-const READ = 'mcp__findings-board__read'
+const POST = 'mcp__workflow-board__post'
+const READ = 'mcp__workflow-board__read'
 const NOT_IN_RUN = 'board: not in a workflow run'
 
 type World = { decisions: Record<string, 'allow' | 'ask' | 'deny' | 'reject'>; registered: string[]; invalidated: string[]; failGet: boolean; failSet: boolean; race: unknown }
@@ -20,7 +20,7 @@ async function boot($: any, on: On): Promise<World> {
   const w: World = { decisions: {}, registered: [], invalidated: [], failGet: false, failSet: false, race: undefined }
   on('tool.register', ($: any, e: any) => {
     w.registered.push(e.name)
-    return { value: { tool: `mcp__findings-board__${e.name}` } }
+    return { value: { tool: `mcp__workflow-board__${e.name}` } }
   })
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
   on('ui.invalidate', ($: any, e: any) => {
