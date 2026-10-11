@@ -51,8 +51,8 @@ describe('parsePost', () => {
   })
 
   test('each limit holds at its boundary and refuses one over', () => {
-    expect(parsePost({ kind: 'find', head: long(120) })).not.toHaveProperty('deny')
-    expect(parsePost({ kind: 'find', head: long(121) })).toEqual({ deny: 'board: head >120' })
+    expect(parsePost({ kind: 'find', head: long(160) })).not.toHaveProperty('deny')
+    expect(parsePost({ kind: 'find', head: long(161) })).toEqual({ deny: 'board: head >160' })
     expect(parsePost({ kind: 'find', head: 'h', body: long(1500) })).not.toHaveProperty('deny')
     expect(parsePost({ kind: 'find', head: 'h', body: long(1501) })).toEqual({ deny: 'board: body >1500' })
     expect(parsePost({ kind: 'find', head: 'h', ev: ['1', '2', '3', '4', '5'] })).not.toHaveProperty('deny')

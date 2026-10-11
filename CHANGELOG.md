@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - `post` refuses entry text that could pass for the board's line format: `·` or one of seven look-alikes in `head` or an `ev` item, an `ev` item that is only `endorsed` or `challenged`, and tag characters outside `A-Za-z0-9_.:/-` (an empty tag included). `board: tag chars A-Za-z0-9_.:/-` replaces the `comma in tag` and `newline in tags` refusals.
 - The Workflow note's example board line has agents finish their own finds before their first board call, since pushes start with that call.
+- `head` takes up to 160 characters (was 120), and the `post` description asks for file:line pointers in `ev`.
 
 ### Fixed
 
