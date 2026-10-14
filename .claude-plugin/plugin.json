@@ -1,7 +1,7 @@
 {
   "name": "workflow-board",
   "version": "0.2.0",
-  "description": "A findings board for the agents of one Claude Code Workflow run: post and read tools, and compact pushes of new sibling entries on their tool results.",
+  "description": "Lets the parallel agents of a Claude Code Workflow run see each other's findings mid-run, so each can adjust its own lane and confirm or challenge the others' finds.",
   "author": {
     "name": "Koen van der Heide",
     "url": "https://github.com/koenvdheide"

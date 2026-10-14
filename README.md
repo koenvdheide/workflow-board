@@ -1,6 +1,6 @@
 # workflow-board
 
-Agents running side by side in one Claude Code Workflow run can't see each other's findings until they finish. workflow-board gives the agents of a run a shared board: a `post` tool and a `read` tool, and short pushes of new sibling entries on their tool results. Boards live in the session's mod state; the mod writes no files and makes no network calls (see [PRIVACY.md](PRIVACY.md)).
+Agents running side by side in one Claude Code Workflow run hand back their findings only when they finish. workflow-board gives the agents of a run a shared board: a `post` tool and a `read` tool, and short pushes of new sibling entries on their tool results. Boards live in the session's mod state; the mod writes no files and makes no network calls (see [PRIVACY.md](PRIVACY.md)).
 
 ## How it works
 
