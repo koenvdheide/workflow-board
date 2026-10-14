@@ -28,10 +28,11 @@ In reads, a `find` or `decide` entry with a `challenge` reply shows as `challeng
 
 ## Install
 
-Needs Claude Code with mods on (developed against 2.1.293 to 2.1.296). Not listed in a marketplace yet; load it for one session with:
+Needs Claude Code with mods on (developed against 2.1.293 to 2.1.296). Install it from the [agent-tools](https://github.com/koenvdheide/agent-tools) marketplace, then start a new session:
 
-```sh
-claude --plugin-dir /path/to/workflow-board
+```text
+/plugin marketplace add koenvdheide/agent-tools
+/plugin install workflow-board@agent-tools
 ```
 
 ## Limitations
