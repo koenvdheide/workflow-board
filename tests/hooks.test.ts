@@ -44,7 +44,7 @@ async function boot($: any, on: On): Promise<World> {
   on('tool.call', { tool: 'mcp__other__op' }, () => ({ result: 'ran' }))
   on('tool.call', { tool: 'mcp__other__ctx' }, () => ({ result: 'ran', context: ['x'] }))
   on('tool.call', { tool: 'mcp__other__denied' }, () => ({ deny: 'no' }))
-  await $.session.start({ cwd: 'C:/repo', surface: null, isInteractive: true })
+  await $.session.start({ cwd: '/repo', surface: null, isInteractive: true })
   return w
 }
 
